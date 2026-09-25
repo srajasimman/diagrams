@@ -20,6 +20,23 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Generate files.json manifest
+        run: |
+          cd public
+          {
+            echo '['
+            first=1
+            for f in $(find . -maxdepth 1 -type f \( -name '*.md' -o -name '*.svg' -o -name '*.html' \) \
+                ! -name 'index.html' | sed 's|^\./||' | sort); do
+              if [ "$first" -eq 0 ]; then echo ','; fi
+              first=0
+              printf '  { "path": "%s", "name": "%s" }\n' "$f" "$f"
+            done
+            echo ']'
+          } > files.json
+          echo "Generated files.json:"
+          cat files.json
+
       - name: Upload site content
         uses: actions/upload-pages-artifact@v5
         with:
