@@ -1,0 +1,52 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "nextjs-azure-app Pipeline Workflow",
+    "quality_profile": "showcase",
+    "output": "templates/nextjs-azure-app/diagrams/pipeline-workflow.html",
+    "views": [
+      { "id": "trigger-to-build", "label": "Trigger to build", "focus": ["trigger", "tier_decision", "build_job"], "note": "See how a consumer pipeline wires in this template library and resolves its deploy tier." },
+      { "id": "quality-gates", "label": "Parallel quality gates", "focus": ["build_job", "sonar_job", "veracode_job"], "note": "SonarCloud and Veracode run in parallel, only for pull requests or the development branch." },
+      { "id": "deploy-gate", "label": "Deploy gate and rollout", "focus": ["build_job", "deploy_job", "no_deploy"], "note": "DeploytoApp and environmentName from tier resolution decide whether Deploy actually runs." }
+    ]
+  },
+  "lanes": [
+    { "id": "consumer", "label": "Consumer Pipeline" },
+    { "id": "config", "label": "Deployment Tier Resolution" },
+    { "id": "build", "label": "Build and Scan Stage" },
+    { "id": "deploy", "label": "Deploy Stage" },
+    { "id": "exceptions", "label": "No Deploy", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "intake", "label": "Trigger + configure", "fromCol": 0, "toCol": 1 },
+    { "id": "build_scan", "label": "Build + scan", "fromCol": 2, "toCol": 4, "variant": "emphasis" },
+    { "id": "gate_deploy", "label": "Gate + deploy", "fromCol": 5, "toCol": 5, "variant": "dashed" }
+  ],
+  "groups": [
+    { "id": "quality_scans", "label": "Parallel scans (PR or development branch only)", "lane": "build", "fromCol": 4, "toCol": 4, "variant": "emphasis" }
+  ],
+  "mainPath": ["trigger", "tier_decision", "build_job", "deploy_job"],
+  "nodes": [
+    { "id": "trigger", "lane": "consumer", "col": 0, "type": "external", "label": "Pipeline Trigger", "sublabel": "consumer repo, Bitbucket", "width": 140 },
+    { "id": "tier_decision", "lane": "config", "col": 1, "type": "security", "label": "Resolve Deploy Tier", "sublabel": "DeployEnv or branch match", "tag": "sets DeploytoApp + environmentName", "width": 150 },
+    { "id": "build_job", "lane": "build", "col": 2, "type": "backend", "label": "BuildJob", "sublabel": "npm ci -> build -> zip", "tag": "publishes drop artifact", "width": 140 },
+    { "id": "sonar_job", "lane": "build", "col": 4, "yOffset": -45, "type": "security", "label": "SonarCloudJob", "sublabel": "prepare / analyze / publish", "width": 140 },
+    { "id": "veracode_job", "lane": "build", "col": 4, "yOffset": 45, "type": "security", "label": "VeracodeJob", "sublabel": "downloads drop, scans", "width": 140 },
+    { "id": "deploy_job", "lane": "deploy", "col": 5, "type": "cloud", "label": "Deploy to Azure App Service", "sublabel": "gate: not PR + DeploytoApp=true", "tag": "AzureWebApp@1 + health check", "width": 190 },
+    { "id": "no_deploy", "lane": "exceptions", "col": 5, "type": "messagebus", "label": "No Deploy", "sublabel": "pipeline ends here", "width": 110 }
+  ],
+  "edges": [
+    { "id": "trigger-config", "from": "trigger", "to": "tier_decision", "label": "pulls variable + stage templates", "variant": "default", "toSide": "top" },
+    { "id": "config-build", "from": "tier_decision", "to": "build_job", "label": "variable group linked", "variant": "emphasis" },
+    { "id": "build-sonar", "from": "build_job", "to": "sonar_job", "label": "PR or development branch", "variant": "dashed", "role": "branch", "fromSide": "right", "toSide": "left" },
+    { "id": "build-veracode", "from": "build_job", "to": "veracode_job", "label": "drop artifact + PR/development", "variant": "dashed", "role": "branch", "toSide": "left" },
+    { "id": "build-deploy", "from": "build_job", "to": "deploy_job", "label": "Build stage succeeded, deploy drop artifact", "variant": "emphasis" },
+    { "id": "deploy-nodeploy", "from": "deploy_job", "to": "no_deploy", "label": "DeploytoApp=false or PR build", "variant": "security", "role": "error" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "One Happy Path", "items": ["Build produces a single drop artifact, zipped and published once", "Non-PR builds on a tier-mapped branch set DeploytoApp = true", "Deploy reuses drop and confirms health before the run succeeds"] },
+    { "dot": "rose", "title": "Stop Conditions", "items": ["PR builds and unmapped branches leave DeploytoApp = false, so Deploy never runs", "PROD branch also sets DeploytoApp = false in this template, requiring another trigger to release", "A health-check timeout fails the pipeline even after a successful deploy"] },
+    { "dot": "emerald", "title": "Cross-Cutting Evidence", "items": ["The drop artifact from BuildJob is reused by VeracodeJob and by Deploy", "DeploytoApp and environmentName are resolved once in tier resolution and gate the Deploy stage", "SonarCloudJob and VeracodeJob both depend on BuildJob and run in parallel, not on each other"] }
+  ]
+}
